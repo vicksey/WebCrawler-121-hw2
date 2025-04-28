@@ -20,13 +20,23 @@ def extract_next_links(url, resp):
     if resp.status == 200:
         content = resp.raw_response.content
         print(type(content))
-        # loop through content
-        # if content is url https//....
-        # append url to next_links
+        try:
+            html = content.decode('utf-8', errors='ignore')
+            hrefs = re.findall(r'href\s*=\s*[\'"]?([^\'" >]+)', html, re.IGNORECASE)
+            next_links.extend(hrefs)
+        except Exception as e:
+            print("Regex extraction error:", e)
     # Status NOT OK !!
     else:
         print("ERROR")
-    return list()
+    return next_links
+
+def tokenize(content: str) -> list[]:
+    tokens = []
+    words = content.split()
+    for word in words:
+        tokens.append(word)
+    return tokens
 
 def is_valid(url):
     # Decide whether to crawl this url or not. 
@@ -36,7 +46,8 @@ def is_valid(url):
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
             return False
-        return not re.match(
+        
+        if re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
             + r"|png|tiff?|mid|mp2|mp3|mp4"
             + r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
@@ -44,7 +55,21 @@ def is_valid(url):
             + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
             + r"|epub|dll|cnf|tgz|sha1"
             + r"|thmx|mso|arff|rtf|jar|csv"
-            + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
+            + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower() ):
+            return False
+        
+        valid_domains = (
+                ".ics.uci.edu",
+                ".cs.uci.edu",
+                ".informatics.uci.edu",
+                ".stat.uci.edu"
+            )
+        if parsed.netloc.endswith(valid_domains):
+            return True
+        if parsed.netloc.endswith("today.uci.edu"):
+            if parsed.path.startswith("/department/information_computer_sciences/"):
+                return True   
+        return False
 
     except TypeError:
         print ("TypeError for ", parsed)
