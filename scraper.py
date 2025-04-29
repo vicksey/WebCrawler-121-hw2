@@ -1,5 +1,39 @@
+from collections import Counter, defaultdict
 import re
-from urllib.parse import urlparse
+from urllib.parse import urldefrag, urlparse
+
+# GLOBAL VARIABLES
+# question 1
+unique_pages = set()
+# question 2
+longest_page_url = ""
+longest_page_wordcount = 0
+# question 3
+word_counter = Counter()
+# question 4
+subdomain_counter = defaultdict(int)
+
+# create set of stop words
+stopwords = set()
+with open('stopwords.txt', 'r') as f:
+    for line in f:
+        stopwords.add(line.strip().lower())
+
+def tokenize(content: str) -> list:
+    # split content into alphanumeric sequences, ignoring punctuation
+    return re.findall(r'\b\w+\b', content)
+
+def remove_html_tags(html):
+    # remove <script> and <style>
+    html = re.sub(r'(?is)<script.*?>.*?</script>', '', html)
+    html = re.sub(r'(?is)<style.*?>.*?</style>', '', html)
+
+    # remove tags such as <html>, <head>, <title>, <body>, <h1>, <p>, etc.
+    text = re.sub(r'<[^>]+>', ' ', html)
+    # remove one or more whitespace characters
+    text = re.sub(r'\s+', ' ', text)
+
+    return text
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
@@ -15,28 +49,48 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-    next_links = list()
+    next_links = []
     # Status OK
     if resp.status == 200:
         content = resp.raw_response.content
-        print(type(content))
+        
         try:
+            # decode response into HTML
             html = content.decode('utf-8', errors='ignore')
             hrefs = re.findall(r'href\s*=\s*[\'"]?([^\'" >]+)', html, re.IGNORECASE)
             next_links.extend(hrefs)
+
+            # retrieve base url 
+            base_url, _ = urldefrag(url)
+            unique_pages.add(base_url)
+
+            # remove html tags so they do not get counted
+            text = remove_html_tags(html)
+
+            # tokenize the text and update word counts
+            tokens = tokenize(text)
+            cleaned_tokens = [token.lower() for token in tokens if token.isalpha() and token.lower() not in stopwords]
+            word_counter.update(cleaned_tokens)
+
+            # check if current url text is longer than the max so far
+            if len(cleaned_tokens) > longest_page_wordcount:
+                longest_page_wordcount = len(cleaned_tokens)
+                longest_page_url = base_url
+
+            # update number of subdomains
+            parsed = urlparse(url)
+            netloc = parsed.netloc.lower()
+            if netloc.endswith(".uci.edu"):
+                subdomain_counter[netloc] += 1
+
         except Exception as e:
-            print("Regex extraction error:", e)
+            print(f"Error processing {url}: {e}")
     # Status NOT OK !!
     else:
-        print("ERROR")
+        print(f"Skipping {url}, bad status {resp.status}")
+
     return next_links
 
-def tokenize(content: str) -> list[]:
-    tokens = []
-    words = content.split()
-    for word in words:
-        tokens.append(word)
-    return tokens
 
 def is_valid(url):
     # Decide whether to crawl this url or not. 
@@ -74,3 +128,22 @@ def is_valid(url):
     except TypeError:
         print ("TypeError for ", parsed)
         raise
+
+
+def create_report():
+    with open('report.txt', 'w', encoding='utf-8') as f:
+        # 1. unique pages
+        f.write(f"Unique pages: {len(unique_pages)}\n")
+
+        # 2. longest page
+        f.write(f"Longest page: {longest_page_url} ({longest_page_wordcount} words)\n\n")
+
+        # 3. top 50 words
+        f.write("Top 50 most common words:\n")
+        for word, count in word_counter.most_common(50):
+            f.write(f"{word}: {count}\n")
+
+        # 4. subdomains found
+        f.write("\nSubdomains:\n")
+        for subdomain in sorted(subdomain_counter.keys()):
+            f.write(f"{subdomain}, {subdomain_counter[subdomain]}\n")
