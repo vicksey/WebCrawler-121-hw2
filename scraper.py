@@ -38,7 +38,7 @@ def remove_html_tags(html):
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
-    return [link for link in links if is_valid(link)]
+    return [link for link in links if is_valid(link) and link not in unique_pages]
 
 def extract_next_links(url, resp):
     # Implementation required.
@@ -73,7 +73,8 @@ def extract_next_links(url, resp):
 
                 # reconstruct normalized URL
                 normalized_url = parsed._replace(netloc=netloc, path=path).geturl()
-                next_links.append(normalized_url)
+                if normalized_url not in unique_pages:
+                    next_links.append(normalized_url)
 
             # retrieve base url 
             base_url, _ = urldefrag(url)
