@@ -1,6 +1,7 @@
 from collections import Counter, defaultdict
 import re
-from urllib.parse import urldefrag, urlparse
+from urllib.parse import urldefrag, urlparse, urljoin
+from bs4 import BeautifulSoup
 
 # GLOBAL VARIABLES
 # question 1
@@ -49,16 +50,19 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
+    global longest_page_url, longest_page_wordcount
     next_links = []
     # Status OK
     if resp.status == 200:
         content = resp.raw_response.content
-        
         try:
             # decode response into HTML
             html = content.decode('utf-8', errors='ignore')
-            hrefs = re.findall(r'href\s*=\s*[\'"]?([^\'" >]+)', html, re.IGNORECASE)
-            next_links.extend(hrefs)
+
+            soup = BeautifulSoup(html, 'html.parser')
+            for link in soup.find_all('a', href=True):
+                full_link = urljoin(url, link['href'])
+                next_links.append(full_link)
 
             # retrieve base url 
             base_url, _ = urldefrag(url)
@@ -100,7 +104,8 @@ def is_valid(url):
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
             return False
-        
+        if "doku.php" in parsed.path.lower() or "swiki" in parsed.netloc.lower():
+            return False
         if re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
             + r"|png|tiff?|mid|mp2|mp3|mp4"
