@@ -58,14 +58,28 @@ def extract_next_links(url, resp):
         try:
             # decode response into HTML
             html = content.decode('utf-8', errors='ignore')
-
             soup = BeautifulSoup(html, 'html.parser')
+
             for link in soup.find_all('a', href=True):
                 full_link = urljoin(url, link['href'])
-                next_links.append(full_link)
+
+                # strip fragment
+                defragged_link, _ = urldefrag(full_link)
+
+                # remove trailing slash
+                parsed = urlparse(defragged_link)
+                netloc = parsed.netloc
+                path = parsed.path.rstrip('/') if parsed.path != '/' else parsed.path
+
+                # reconstruct normalized URL
+                normalized_url = parsed._replace(netloc=netloc, path=path).geturl()
+                next_links.append(normalized_url)
 
             # retrieve base url 
             base_url, _ = urldefrag(url)
+            parsed_base = urlparse(base_url)
+            base_path = parsed_base.path.rstrip('/') if parsed_base.path != '/' else parsed_base.path
+            base_url = parsed_base._replace(path=base_path).geturl()
             unique_pages.add(base_url)
 
             # remove html tags so they do not get counted
@@ -101,6 +115,7 @@ def is_valid(url):
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
     try:
+        url, _ = urldefrag(url)
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
             return False
