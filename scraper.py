@@ -2,10 +2,12 @@ from collections import Counter, defaultdict
 import re
 from urllib.parse import urldefrag, urlparse, urljoin
 from bs4 import BeautifulSoup
+from collections import Counter
 
 # GLOBAL VARIABLES
 # question 1
 unique_pages = set()
+num_pages = 0
 # question 2
 longest_page_url = ""
 longest_page_wordcount = 0
@@ -13,6 +15,22 @@ longest_page_wordcount = 0
 word_counter = Counter()
 # question 4
 subdomain_counter = defaultdict(int)
+
+DATE_PATTERN = re.compile(r"\d{4}-\d{2}(-\d{2})?")
+EXTENSION_PATTERN = re.compile(
+    r".*\.(css|js|bmp|gif|jpe?g|ico|png|tiff?|mid|mp2|mp3|mp4|"
+    r"wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf|ps|eps|tex|ppt|"
+    r"pptx|doc|docx|xls|xlsx|names|data|dat|exe|bz2|tar|msi|"
+    r"bin|7z|psd|dmg|iso|epub|dll|cnf|tgz|sha1|thmx|mso|arff|"
+    r"rtf|jar|csv|rm|smil|wmv|swf|wma|zip|rar|gz)$", re.IGNORECASE)
+BLOCKED_KEYWORDS = {"doku.php", "swiki", "events", "~eppstein", "wics", "wiki", "grape"}
+BLOCKED_QUERY_PARAMS = {"tribe-bar-date", "ical", "tribe_events_display"}
+VALID_DOMAINS = (
+    ".ics.uci.edu",
+    ".cs.uci.edu",
+    ".informatics.uci.edu",
+    ".stat.uci.edu"
+)
 
 # create set of stop words
 stopwords = set()
@@ -50,7 +68,7 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-    global longest_page_url, longest_page_wordcount
+    global longest_page_url, longest_page_wordcount, num_pages
     next_links = []
     # Status OK
     if resp.status == 200:
@@ -81,15 +99,21 @@ def extract_next_links(url, resp):
             parsed_base = urlparse(base_url)
             base_path = parsed_base.path.rstrip('/') if parsed_base.path != '/' else parsed_base.path
             base_url = parsed_base._replace(path=base_path).geturl()
-            unique_pages.add(base_url)
-
+            if len(unique_pages) < 5000:
+                unique_pages.add(base_url)
+            num_pages += 1
             # remove html tags so they do not get counted
             text = remove_html_tags(html)
 
             # tokenize the text and update word counts
             tokens = tokenize(text)
             cleaned_tokens = [token.lower() for token in tokens if token.isalpha() and token.lower() not in stopwords]
-            word_counter.update(cleaned_tokens)
+            if (len(word_counter) < 5000):
+                word_counter.update(cleaned_tokens)
+            else:
+                for token in cleaned_tokens:
+                    if(token in word_counter):
+                        word_counter.update([token])
 
             # check if current url text is longer than the max so far
             if len(cleaned_tokens) > longest_page_wordcount:
@@ -112,57 +136,48 @@ def extract_next_links(url, resp):
 
 
 def is_valid(url):
-    # Decide whether to crawl this url or not. 
-    # If you decide to crawl it, return True; otherwise return False.
-    # There are already some conditions that return False.
     try:
         url, _ = urldefrag(url)
         parsed = urlparse(url)
-        if parsed.scheme not in set(["http", "https"]):
+        if parsed.scheme not in {"http", "https"}:
             return False
-        if "doku.php" in parsed.path.lower() or "swiki" in parsed.path.lower() or "events" in parsed.path.lower() or "~eppstein" in parsed.path.lower() or "wics" in parsed.path.lower() or "wiki" in parsed.path.lower() or "grape" in parsed.path.lower():
+
+        path_lower = parsed.path.lower()
+        netloc_lower = parsed.netloc.lower()
+        query_lower = parsed.query.lower()
+
+        if any(keyword in path_lower for keyword in BLOCKED_KEYWORDS):
             return False
-        if "doku.php" in parsed.query.lower() or "swiki" in parsed.query.lower() or "events" in parsed.query.lower() or "~eppstein" in parsed.query.lower() or "wics" in parsed.query.lower() or "wiki" in parsed.query.lower() or "grape" in parsed.query.lower():
+        if any(keyword in netloc_lower for keyword in BLOCKED_KEYWORDS):
             return False
-        if "doku.php" in parsed.netloc.lower() or "swiki" in parsed.netloc.lower() or "events" in parsed.netloc.lower() or "~eppstein" in parsed.netloc.lower() or "wics" in parsed.netloc.lower() or "wiki" in parsed.netloc.lower() or "grape" in parsed.netloc.lower():
+        if any(keyword in query_lower for keyword in BLOCKED_KEYWORDS):
             return False
-        if re.search(r"\d{4}-\d{2}-\d{2}", parsed.path.lower()) or re.search(r"\d{4}-\d{2}-\d{2}", parsed.query.lower()) or re.search(r"\d{4}-\d{2}", parsed.path.lower()) or re.search(r"\d{4}-\d{2}", parsed.query.lower()):
+
+        if DATE_PATTERN.search(path_lower) or DATE_PATTERN.search(query_lower):
             return False
-        if "tribe-bar-date" in parsed.path.lower() or "ical" in parsed.path.lower() or "tribe_events_display" in parsed.path.lower() or "tribe-bar-date" in parsed.query.lower() or "ical" in parsed.query.lower() or "tribe_events_display" in parsed.query.lower():
+
+        if any(param in query_lower for param in BLOCKED_QUERY_PARAMS):
             return False
-        if re.match(
-            r".*\.(css|js|bmp|gif|jpe?g|ico"
-            + r"|png|tiff?|mid|mp2|mp3|mp4"
-            + r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
-            + r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
-            + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
-            + r"|epub|dll|cnf|tgz|sha1"
-            + r"|thmx|mso|arff|rtf|jar|csv"
-            + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower() ):
+
+        if EXTENSION_PATTERN.search(path_lower):
             return False
-        
-        valid_domains = (
-                ".ics.uci.edu",
-                ".cs.uci.edu",
-                ".informatics.uci.edu",
-                ".stat.uci.edu"
-            )
-        if parsed.netloc.endswith(valid_domains):
+
+        if any(netloc_lower.endswith(domain) for domain in VALID_DOMAINS):
             return True
-        if parsed.netloc.endswith("today.uci.edu"):
-            if parsed.path.startswith("/department/information_computer_sciences/"):
-                return True   
+        if netloc_lower.endswith("today.uci.edu") and path_lower.startswith("/department/information_computer_sciences/"):
+            return True
+
         return False
 
     except TypeError:
-        print ("TypeError for ", parsed)
+        print("TypeError for URL:", url)
         raise
 
 
 def create_report():
     with open('report.txt', 'w', encoding='utf-8') as f:
         # 1. unique pages
-        f.write(f"Unique pages: {len(unique_pages)}\n")
+        f.write(f"Unique pages: {num_pages}\n")
 
         # 2. longest page
         f.write(f"Longest page: {longest_page_url} ({longest_page_wordcount} words)\n\n")
