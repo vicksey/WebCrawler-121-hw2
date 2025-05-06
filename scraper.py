@@ -120,11 +120,11 @@ def is_valid(url):
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
             return False
-        if "doku.php" in parsed.path.lower() or "swiki" in parsed.path.lower() or "events" in parsed.path.lower() or "~eppstein" in parsed.path.lower():
+        if "doku.php" in parsed.path.lower() or "swiki" in parsed.path.lower() or "events" in parsed.path.lower() or "~eppstein" in parsed.path.lower() or "wics" in parsed.path.lower() or "wiki" in parsed.path.lower() or "grape" in parsed.path.lower():
             return False
-        if "doku.php" in parsed.query.lower() or "swiki" in parsed.query.lower() or "events" in parsed.query.lower() or "~eppstein" in parsed.query.lower():
+        if "doku.php" in parsed.query.lower() or "swiki" in parsed.query.lower() or "events" in parsed.query.lower() or "~eppstein" in parsed.query.lower() or "wics" in parsed.query.lower() or "wiki" in parsed.query.lower() or "grape" in parsed.query.lower():
             return False
-        if "doku.php" in parsed.netloc.lower() or "swiki" in parsed.netloc.lower() or "events" in parsed.netloc.lower() or "~eppstein" in parsed.netloc.lower():
+        if "doku.php" in parsed.netloc.lower() or "swiki" in parsed.netloc.lower() or "events" in parsed.netloc.lower() or "~eppstein" in parsed.netloc.lower() or "wics" in parsed.netloc.lower() or "wiki" in parsed.netloc.lower() or or "grape" in parsed.netloc.lower():
             return False
         if re.search(r"\d{4}-\d{2}-\d{2}", parsed.path.lower()) or re.search(r"\d{4}-\d{2}-\d{2}", parsed.query.lower()) or re.search(r"\d{4}-\d{2}", parsed.path.lower()) or re.search(r"\d{4}-\d{2}", parsed.query.lower()):
             return False
