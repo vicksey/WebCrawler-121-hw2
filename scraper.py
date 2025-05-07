@@ -1,8 +1,7 @@
 from collections import Counter, defaultdict
 import re
 from urllib.parse import urldefrag, urlparse, urljoin
-from bs4 import BeautifulSoup
-from collections import Counter
+from lxml import html as lh
 
 # GLOBAL VARIABLES
 # question 1
@@ -75,26 +74,26 @@ def extract_next_links(url, resp):
         content = resp.raw_response.content
         try:
             # decode response into HTML
-            html = content.decode('utf-8', errors='ignore')
-            soup = BeautifulSoup(html, 'html.parser')
-
-            for link in soup.find_all('a', href=True):
-                full_link = urljoin(url, link['href'])
-
+            doc = lh.fromstring(content)
+            doc.make_links_absolute(url, resolve_base_href=True)
+            for _, href, l, _ in doc.iterlinks():
+                if not href and not l:
+                    continue
                 # strip fragment
-                defragged_link, _ = urldefrag(full_link)
+                clean_href, _ = urldefrag(l)
+                parsed = urlparse(clean_href)
 
-                # remove trailing slash
-                parsed = urlparse(defragged_link)
-                netloc = parsed.netloc
-                path = parsed.path.rstrip('/') if parsed.path != '/' else parsed.path
+                # normalise: remove trailing '/' unless root
+                path = parsed.path.rstrip("/") if parsed.path and parsed.path != "/" else parsed.path
+                normalised = parsed._replace(path=path).geturl()
 
-                # reconstruct normalized URL
-                normalized_url = parsed._replace(netloc=netloc, path=path).geturl()
-                if normalized_url not in unique_pages:
-                    next_links.append(normalized_url)
+                if normalised not in unique_pages:
+                    next_links.append(normalised)
 
+            # deduplicate list while preserving order
+            next_links = list(dict.fromkeys(next_links))
             # retrieve base url 
+
             base_url, _ = urldefrag(url)
             parsed_base = urlparse(base_url)
             base_path = parsed_base.path.rstrip('/') if parsed_base.path != '/' else parsed_base.path
@@ -102,6 +101,8 @@ def extract_next_links(url, resp):
             if len(unique_pages) < 5000:
                 unique_pages.add(base_url)
             num_pages += 1
+
+            html = content.decode('utf-8', errors='ignore')
             # remove html tags so they do not get counted
             text = remove_html_tags(html)
 

@@ -1,0 +1,58 @@
+Unique pages: 2
+Longest page: https://www.informatics.uci.edu (448 words)
+
+Top 50 most common words:
+s: 22
+research: 17
+department: 16
+statistics: 13
+undergraduate: 13
+informatics: 13
+graduate: 11
+student: 11
+b: 9
+software: 9
+engineering: 9
+information: 8
+ph: 8
+d: 8
+faculty: 7
+degrees: 7
+m: 7
+master: 7
+computer: 6
+data: 6
+science: 6
+seminar: 6
+profiles: 6
+design: 6
+opportunities: 5
+students: 5
+news: 5
+statistical: 5
+books: 5
+support: 5
+donald: 4
+bren: 4
+school: 4
+amp: 4
+sciences: 4
+explore: 4
+contact: 4
+uci: 4
+one: 4
+series: 4
+policies: 4
+courses: 4
+groups: 4
+application: 4
+process: 4
+life: 4
+projects: 4
+alumni: 4
+spotlights: 4
+technology: 4
+
+Subdomains:
+www.informatics.uci.edu, 1
+www.stat.uci.edu, 1
