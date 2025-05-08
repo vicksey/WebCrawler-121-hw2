@@ -21,7 +21,7 @@ EXTENSION_PATTERN = re.compile(
     r"wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf|ps|eps|tex|ppt|"
     r"pptx|doc|docx|xls|xlsx|names|data|dat|exe|bz2|tar|msi|"
     r"bin|7z|psd|dmg|iso|epub|dll|cnf|tgz|sha1|thmx|mso|arff|"
-    r"rtf|jar|csv|rm|smil|wmv|swf|wma|zip|rar|gz)$", re.IGNORECASE)
+    r"rtf|jar|csv|rm|smil|wmv|swf|wma|zip|rar|gz|txt|ipynb)$", re.IGNORECASE)
 BLOCKED_KEYWORDS = {"doku.php", "swiki", "events", "~eppstein", "wics", "wiki", "grape"}
 BLOCKED_QUERY_PARAMS = {"tribe-bar-date", "ical", "tribe_events_display"}
 VALID_DOMAINS = (
@@ -71,8 +71,9 @@ def extract_next_links(url, resp):
     next_links = []
     # Status OK
     if resp.status == 200:
-        content = resp.raw_response.content
         try:
+            content = resp.raw_response.content
+
             # decode response into HTML
             doc = lh.fromstring(content)
             doc.make_links_absolute(url, resolve_base_href=True)
@@ -109,7 +110,7 @@ def extract_next_links(url, resp):
             # tokenize the text and update word counts
             tokens = tokenize(text)
             cleaned_tokens = [token.lower() for token in tokens if token.isalpha() and token.lower() not in stopwords]
-            if (len(word_counter) < 5000):
+            if len(word_counter) < 5000 and len(word_counter) > 100:
                 word_counter.update(cleaned_tokens)
             else:
                 for token in cleaned_tokens:
