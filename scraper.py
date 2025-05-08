@@ -4,6 +4,7 @@ from urllib.parse import urldefrag, urlparse, urljoin
 from lxml import html as lh
 import hashlib
 from simhash import Simhash
+import threading
 
 # GLOBAL VARIABLES
 # question 1
@@ -23,12 +24,12 @@ SIMHASHES = [] # for near duplicate detection
 
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}(-\d{2})?")
 EXTENSION_PATTERN = re.compile(
-    r".*\.(css|js|bmp|gif|jpe?g|ico|png|tiff?|mid|mp2|mp3|mp4|"
+    r".*.(css|js|bmp|gif|jpe?g|ico|png|tiff?|mid|mp2|mp3|mp4|"
     r"wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf|ps|eps|tex|ppt|"
     r"pptx|doc|docx|xls|xlsx|names|data|dat|exe|bz2|tar|msi|"
     r"bin|7z|psd|dmg|iso|epub|dll|cnf|tgz|sha1|thmx|mso|arff|"
-    r"rtf|jar|csv|rm|smil|wmv|swf|wma|zip|rar|gz|txt|ipynb)$", re.IGNORECASE)
-BLOCKED_KEYWORDS = {"doku.php", "swiki", "events", "~eppstein", "wics", "wiki", "grape"}
+    r"rtf|jar|csv|rm|smil|wmv|swf|wma|zip|rar|gz|ipynb|war|apk)$", re.IGNORECASE)
+BLOCKED_KEYWORDS = {"doku.php", "swiki", "events", "~eppstein", "wics", "wiki", "grape", "nanda"}
 BLOCKED_QUERY_PARAMS = {"tribe-bar-date", "ical", "tribe_events_display"}
 VALID_DOMAINS = (
     ".ics.uci.edu",
@@ -36,6 +37,13 @@ VALID_DOMAINS = (
     ".informatics.uci.edu",
     ".stat.uci.edu"
 )
+
+#Lock
+unique_pages_lock = threading.RLock()
+word_counter_lock = threading.RLock()
+subdomain_counter_lock = threading.RLock()
+checksum_lock = threading.RLock()
+simhash_lock = threading.RLock()
 
 # create set of stop words
 stopwords = set()
@@ -61,7 +69,13 @@ def remove_html_tags(html):
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
-    return [link for link in links if is_valid(link) and link not in UNIQUE_PAGES]
+    next_links = []
+    for link in links:
+        with unique_pages_lock:
+            if is_valid(link) and link not in UNIQUE_PAGES:
+                UNIQUE_PAGES.add(link)
+                next_links.append(link)
+    return next_links
 
 def extract_next_links(url, resp):
     # Implementation required.
@@ -74,6 +88,7 @@ def extract_next_links(url, resp):
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
     global LONGEST_PAGE_URL, LONGEST_PAGE_WORDCOUNT, NUM_PAGES
+    
     next_links = []
     # Status OK
     if resp.status == 200:
@@ -81,11 +96,14 @@ def extract_next_links(url, resp):
             content = resp.raw_response.content
             # checksum
             checksum = hashlib.md5(content).hexdigest()
-            if checksum in CHECKSUMS:
-                print(f"Duplicate content detected at {url}")
-                return []
-            else:
-                CHECKSUMS.add(checksum)
+
+            
+            with checksum_lock:
+                if checksum in CHECKSUMS:
+                    return []
+                else:
+                    if len(CHECKSUMS) < 5000:
+                        CHECKSUMS.add(checksum)
 
             html = content.decode('utf-8', errors='ignore')
             # remove html tags so they do not get counted
@@ -93,11 +111,12 @@ def extract_next_links(url, resp):
 
             # simhash
             simhash_value = Simhash(tokenize(text))
-            for existing in SIMHASHES:
-                if simhash_value.distance(existing) <= 3:
-                    print(f"Near-duplicate (SimHash) detected at {url}")
-                    return []
-            SIMHASHES.append(simhash_value)
+            with simhash_lock:
+                for existing in SIMHASHES:
+                    if simhash_value.distance(existing) <= 3:
+                        return []
+                if len(SIMHASHES) < 5000:
+                     SIMHASHES.append(simhash_value)
 
             # decode response into HTML
             doc = lh.fromstring(content)
@@ -124,31 +143,34 @@ def extract_next_links(url, resp):
             parsed_base = urlparse(base_url)
             base_path = parsed_base.path.rstrip('/') if parsed_base.path != '/' else parsed_base.path
             base_url = parsed_base._replace(path=base_path).geturl()
-            if len(UNIQUE_PAGES) < 5000:
-                UNIQUE_PAGES.add(base_url)
-            NUM_PAGES += 1
+            with unique_pages_lock:
+                if len(UNIQUE_PAGES) < 5000:
+                    UNIQUE_PAGES.add(base_url)
+                NUM_PAGES += 1
 
 
             # tokenize the text and update word counts
             tokens = tokenize(text)
             cleaned_tokens = [token.lower() for token in tokens if token.isalpha() and token.lower() not in stopwords]
-            if len(WORD_COUNTER) < 5000 and len(WORD_COUNTER) > 100:
-                WORD_COUNTER.update(cleaned_tokens)
-            else:
-                for token in cleaned_tokens:
-                    if(token in WORD_COUNTER):
-                        WORD_COUNTER.update([token])
-
-            # check if current url text is longer than the max so far
-            if len(cleaned_tokens) > LONGEST_PAGE_WORDCOUNT:
-                LONGEST_PAGE_WORDCOUNT = len(cleaned_tokens)
-                LONGEST_PAGE_URL = base_url
+            with word_counter_lock:
+                if len(WORD_COUNTER) < 5000 and len(WORD_COUNTER) > 100:
+                    WORD_COUNTER.update(cleaned_tokens)
+                else:
+                    for token in cleaned_tokens:
+                        if(token in WORD_COUNTER):
+                            WORD_COUNTER.update([token])
+    
+                # check if current url text is longer than the max so far
+                if len(cleaned_tokens) > LONGEST_PAGE_WORDCOUNT:
+                    LONGEST_PAGE_WORDCOUNT = len(cleaned_tokens)
+                    LONGEST_PAGE_URL = base_url
 
             # update number of subdomains
             parsed = urlparse(url)
             netloc = parsed.netloc.lower()
-            if netloc.endswith(".uci.edu"):
-                SUBDOMAIN_COUNTER[netloc] += 1
+            with subdomain_counter_lock:
+                if netloc.endswith(".uci.edu"):
+                    SUBDOMAIN_COUNTER[netloc] += 1
 
         except Exception as e:
             print(f"Error processing {url}: {e}")
