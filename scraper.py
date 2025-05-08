@@ -2,18 +2,24 @@ from collections import Counter, defaultdict
 import re
 from urllib.parse import urldefrag, urlparse, urljoin
 from lxml import html as lh
+import hashlib
+from simhash import Simhash
 
 # GLOBAL VARIABLES
 # question 1
-unique_pages = set()
-num_pages = 0
+UNIQUE_PAGES = set()
+NUM_PAGES = 0
 # question 2
-longest_page_url = ""
-longest_page_wordcount = 0
+LONGEST_PAGE_URL = ""
+LONGEST_PAGE_WORDCOUNT = 0
 # question 3
-word_counter = Counter()
+WORD_COUNTER = Counter()
 # question 4
-subdomain_counter = defaultdict(int)
+SUBDOMAIN_COUNTER = defaultdict(int)
+
+# duplicate detection
+CHECKSUMS = set() # for MD5
+SIMHASHES = [] # for near duplicate detection
 
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}(-\d{2})?")
 EXTENSION_PATTERN = re.compile(
@@ -55,7 +61,7 @@ def remove_html_tags(html):
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
-    return [link for link in links if is_valid(link) and link not in unique_pages]
+    return [link for link in links if is_valid(link) and link not in UNIQUE_PAGES]
 
 def extract_next_links(url, resp):
     # Implementation required.
@@ -67,12 +73,31 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-    global longest_page_url, longest_page_wordcount, num_pages
+    global LONGEST_PAGE_URL, LONGEST_PAGE_WORDCOUNT, NUM_PAGES
     next_links = []
     # Status OK
     if resp.status == 200:
         try:
             content = resp.raw_response.content
+            # checksum
+            checksum = hashlib.md5(content).hexdigest()
+            if checksum in CHECKSUMS:
+                print(f"Duplicate content detected at {url}")
+                return []
+            else:
+                CHECKSUMS.add(checksum)
+
+            html = content.decode('utf-8', errors='ignore')
+            # remove html tags so they do not get counted
+            text = remove_html_tags(html)
+
+            # simhash
+            simhash_value = Simhash(tokenize(text))
+            for existing in SIMHASHES:
+                if simhash_value.distance(existing) <= 3:
+                    print(f"Near-duplicate (SimHash) detected at {url}")
+                    return []
+            SIMHASHES.append(simhash_value)
 
             # decode response into HTML
             doc = lh.fromstring(content)
@@ -88,7 +113,7 @@ def extract_next_links(url, resp):
                 path = parsed.path.rstrip("/") if parsed.path and parsed.path != "/" else parsed.path
                 normalised = parsed._replace(path=path).geturl()
 
-                if normalised not in unique_pages:
+                if normalised not in UNIQUE_PAGES:
                     next_links.append(normalised)
 
             # deduplicate list while preserving order
@@ -99,34 +124,31 @@ def extract_next_links(url, resp):
             parsed_base = urlparse(base_url)
             base_path = parsed_base.path.rstrip('/') if parsed_base.path != '/' else parsed_base.path
             base_url = parsed_base._replace(path=base_path).geturl()
-            if len(unique_pages) < 5000:
-                unique_pages.add(base_url)
-            num_pages += 1
+            if len(UNIQUE_PAGES) < 5000:
+                UNIQUE_PAGES.add(base_url)
+            NUM_PAGES += 1
 
-            html = content.decode('utf-8', errors='ignore')
-            # remove html tags so they do not get counted
-            text = remove_html_tags(html)
 
             # tokenize the text and update word counts
             tokens = tokenize(text)
             cleaned_tokens = [token.lower() for token in tokens if token.isalpha() and token.lower() not in stopwords]
-            if len(word_counter) < 5000 and len(word_counter) > 100:
-                word_counter.update(cleaned_tokens)
+            if len(WORD_COUNTER) < 5000 and len(WORD_COUNTER) > 100:
+                WORD_COUNTER.update(cleaned_tokens)
             else:
                 for token in cleaned_tokens:
-                    if(token in word_counter):
-                        word_counter.update([token])
+                    if(token in WORD_COUNTER):
+                        WORD_COUNTER.update([token])
 
             # check if current url text is longer than the max so far
-            if len(cleaned_tokens) > longest_page_wordcount:
-                longest_page_wordcount = len(cleaned_tokens)
-                longest_page_url = base_url
+            if len(cleaned_tokens) > LONGEST_PAGE_WORDCOUNT:
+                LONGEST_PAGE_WORDCOUNT = len(cleaned_tokens)
+                LONGEST_PAGE_URL = base_url
 
             # update number of subdomains
             parsed = urlparse(url)
             netloc = parsed.netloc.lower()
             if netloc.endswith(".uci.edu"):
-                subdomain_counter[netloc] += 1
+                SUBDOMAIN_COUNTER[netloc] += 1
 
         except Exception as e:
             print(f"Error processing {url}: {e}")
@@ -179,17 +201,17 @@ def is_valid(url):
 def create_report():
     with open('report.txt', 'w', encoding='utf-8') as f:
         # 1. unique pages
-        f.write(f"Unique pages: {num_pages}\n")
+        f.write(f"Unique pages: {NUM_PAGES}\n")
 
         # 2. longest page
-        f.write(f"Longest page: {longest_page_url} ({longest_page_wordcount} words)\n\n")
+        f.write(f"Longest page: {LONGEST_PAGE_URL} ({LONGEST_PAGE_WORDCOUNT} words)\n\n")
 
         # 3. top 50 words
         f.write("Top 50 most common words:\n")
-        for word, count in word_counter.most_common(50):
+        for word, count in WORD_COUNTER.most_common(50):
             f.write(f"{word}: {count}\n")
 
         # 4. subdomains found
         f.write("\nSubdomains:\n")
-        for subdomain in sorted(subdomain_counter.keys()):
-            f.write(f"{subdomain}, {subdomain_counter[subdomain]}\n")
+        for subdomain in sorted(SUBDOMAIN_COUNTER.keys()):
+            f.write(f"{subdomain}, {SUBDOMAIN_COUNTER[subdomain]}\n")
