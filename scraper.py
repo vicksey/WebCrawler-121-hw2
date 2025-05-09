@@ -27,7 +27,7 @@ EXTENSION_PATTERN = re.compile(
     r".*.(css|js|bmp|gif|jpe?g|ico|png|tiff?|mid|mp2|mp3|mp4|"
     r"wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf|ps|eps|tex|ppt|"
     r"pptx|doc|docx|xls|xlsx|names|data|dat|exe|bz2|tar|msi|"
-    r"bin|7z|psd|dmg|iso|epub|dll|cnf|tgz|sha1|thmx|mso|arff|"
+    r"bin|7z|psd|dmg|iso|epub|dll|cnf|tgz|sha1|thmx|mso|arff|png|jpeg|"
     r"rtf|jar|csv|rm|smil|wmv|swf|wma|zip|rar|gz|ipynb|war|apk)$", re.IGNORECASE)
 BLOCKED_KEYWORDS = {"doku.php", "swiki", "events", "~eppstein", "wics", "wiki", "grape", "nanda"}
 BLOCKED_QUERY_PARAMS = {"tribe-bar-date", "ical", "tribe_events_display"}
@@ -74,7 +74,8 @@ def scraper(url, resp):
         with unique_pages_lock:
             if is_valid(link) and link not in UNIQUE_PAGES:
                 UNIQUE_PAGES.add(link)
-                next_links.append(link)
+                if len(link) < 370:
+                    next_links.append(link)
     return next_links
 
 def extract_next_links(url, resp):
@@ -102,7 +103,7 @@ def extract_next_links(url, resp):
                 if checksum in CHECKSUMS:
                     return []
                 else:
-                    if len(CHECKSUMS) < 5000:
+                    if len(CHECKSUMS) < 8000:
                         CHECKSUMS.add(checksum)
 
             html = content.decode('utf-8', errors='ignore')
@@ -115,7 +116,7 @@ def extract_next_links(url, resp):
                 for existing in SIMHASHES:
                     if simhash_value.distance(existing) <= 3:
                         return []
-                if len(SIMHASHES) < 5000:
+                if len(SIMHASHES) < 8000:
                      SIMHASHES.append(simhash_value)
 
             # decode response into HTML
@@ -133,7 +134,8 @@ def extract_next_links(url, resp):
                 normalised = parsed._replace(path=path).geturl()
 
                 if normalised not in UNIQUE_PAGES:
-                    next_links.append(normalised)
+                    if len(normalised) < 370:
+                        next_links.append(normalised)
 
             # deduplicate list while preserving order
             next_links = list(dict.fromkeys(next_links))
@@ -144,7 +146,7 @@ def extract_next_links(url, resp):
             base_path = parsed_base.path.rstrip('/') if parsed_base.path != '/' else parsed_base.path
             base_url = parsed_base._replace(path=base_path).geturl()
             with unique_pages_lock:
-                if len(UNIQUE_PAGES) < 5000:
+                if len(UNIQUE_PAGES) < 8000:
                     UNIQUE_PAGES.add(base_url)
                 NUM_PAGES += 1
 
@@ -153,7 +155,7 @@ def extract_next_links(url, resp):
             tokens = tokenize(text)
             cleaned_tokens = [token.lower() for token in tokens if token.isalpha() and token.lower() not in stopwords]
             with word_counter_lock:
-                if len(WORD_COUNTER) < 5000 and len(WORD_COUNTER) > 100:
+                if len(WORD_COUNTER) < 8000:
                     WORD_COUNTER.update(cleaned_tokens)
                 else:
                     for token in cleaned_tokens:
