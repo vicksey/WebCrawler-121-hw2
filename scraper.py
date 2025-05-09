@@ -155,7 +155,7 @@ def extract_next_links(url, resp):
             tokens = tokenize(text)
             cleaned_tokens = [token.lower() for token in tokens if token.isalpha() and token.lower() not in stopwords]
             with word_counter_lock:
-                if len(WORD_COUNTER) < 8000:
+                if len(WORD_COUNTER) < 5000 and len(cleaned_tokens) > 100:
                     WORD_COUNTER.update(cleaned_tokens)
                 else:
                     for token in cleaned_tokens:
