@@ -52,8 +52,11 @@ with open('stopwords.txt', 'r') as f:
         stopwords.add(line.strip().lower())
 
 def tokenize(content: str) -> list:
+    # disregard non‑ASCII bytes
     # split content into alphanumeric sequences, ignoring punctuation
-    return re.findall(r'\b\w+\b', content)
+    ascii_text = content.encode("ascii", "ignore").decode()
+    # find runs of 2+ ASCII letters/digits
+    return re.findall(r"\b[A-Za-z0-9]{2,}\b", ascii_text)
 
 def remove_html_tags(html):
     # remove <script> and <style>
@@ -153,9 +156,9 @@ def extract_next_links(url, resp):
 
             # tokenize the text and update word counts
             tokens = tokenize(text)
-            cleaned_tokens = [token.lower() for token in tokens if token.isalpha() and token.lower() not in stopwords]
+            cleaned_tokens = [token.lower() for token in tokens if token.lower() not in stopwords and not token.isdigit()]
             with word_counter_lock:
-                if len(WORD_COUNTER) < 5000 and len(cleaned_tokens) > 100:
+                if len(WORD_COUNTER) < 4000 and len(cleaned_tokens) > 100:
                     WORD_COUNTER.update(cleaned_tokens)
                 else:
                     for token in cleaned_tokens:
